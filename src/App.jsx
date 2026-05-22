@@ -8,10 +8,8 @@ import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import datosGeoRaw from './adaja.json';
 
-// 📊 IMPORTAMOS LOS COMPONENTES DE LA LIBRERÍA DE GRÁFICAS
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-// --- ESTILOS PARA EL SUBMENÚ ---
 const submenuStyles = `
   .leaflet-control-layers-overlays label:has(input + span:contains("↳")) {
     margin-left: 20px;
@@ -30,24 +28,31 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+// ✅ iconoLluvia fuera del componente está bien (no usa React)
+const iconoLluvia = L.divIcon({
+   html: '<span style="font-size: 30px; line-height: 1;">🌧️</span>',
+  className: '',
+  iconSize: [60, 60],
+  iconAnchor: [30, 30]
+});
+
 const UTM30N = "+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs";
 const WGS84 = "EPSG:4326";
 
 function App() {
   const [datosCorregidos, setDatosCorregidos] = useState(null);
   const [mostrarSubmenu, setMostrarSubmenu] = useState(false);
-  
-  // 📈 ESTADOS PARA EL CAUDAL ACTUAL Y EL HISTORIAL DE 24 HORAS
   const [datosRioReal, setDatosRioReal] = useState(null);
   const [historicoReal, setHistoricoReal] = useState([]);
   const [cargandoReal, setCargandoReal] = useState(true);
-
-  // 🖱️ ESTADO INTERACTIVO PARA MOSTRAR/OCULTAR LA GRÁFICA
   const [mostrarGrafica, setMostrarGrafica] = useState(false);
+
+  // ✅ useState de pluviómetros dentro del componente
+  const [pluviometros, setPluviometros] = useState([]);
 
   const position = [40.62435, -4.7300];
 
-  // 1. Efecto original para transformar coordenadas UTM del JSON local
+  // 1. Transformar coordenadas UTM del JSON local
   useEffect(() => {
     if (datosGeoRaw && datosGeoRaw.features) {
       try {
@@ -70,12 +75,10 @@ function App() {
     }
   }, []);
 
-  // 2. 🔄 EFECTO DE CONSUMO: Con técnica anti-caché integrada (?v=)
+  // 2. Datos del río
   useEffect(() => {
-    // Creamos una marca de tiempo única en milisegundos para invalidar cachés del navegador
     const timestampAntiCache = new Date().getTime();
 
-    // Petición 1: Último dato dinámico para el marcador
     fetch(`http://localhost:8080/api/rios?v=${timestampAntiCache}`)
       .then(response => response.json())
       .then(dataActual => {
@@ -92,7 +95,6 @@ function App() {
       })
       .catch(error => console.error("Error cargando caudal actual:", error));
 
-    // Petición 2: Histórico estricto de las últimas 24h
     fetch(`http://localhost:8080/api/rios/historico?v=${timestampAntiCache}`)
       .then(response => response.json())
       .then(dataHistorico => {
@@ -107,6 +109,14 @@ function App() {
       });
   }, []);
 
+  // 3. ✅ Datos de pluviómetros dentro del componente
+  useEffect(() => {
+    fetch(`http://localhost:8080/api/pluviometros`)
+      .then(res => res.json())
+      .then(data => setPluviometros(data))
+      .catch(err => console.error("Error pluviómetros:", err));
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: "100vh", width: "100%" }}>
       <style>{submenuStyles}</style>
@@ -114,7 +124,7 @@ function App() {
       <Header />
 
       <div style={{ flex: 1 }}>
-        <MapContainer center={position} zoom={10} maxZoom={10} minZoom={10} style={{ height: "100%", width: "100%" }}>
+        <MapContainer center={position} zoom={10} minZoom={9} maxZoom={11} style={{ height: "100%", width: "100%" }}>
           <LayersControl position="topleft">
             
             <LayersControl.BaseLayer checked name="🗺️ Mapa Callejero">
@@ -165,7 +175,7 @@ function App() {
 
           </LayersControl>
 
-          {/* --- MARCADOR CON POPUP ESTABLE --- */}
+          {/* --- MARCADOR RÍO ADAJA --- */}
           <Marker position={position}>
             <Popup 
               minWidth={350}
@@ -234,24 +244,46 @@ function App() {
             </Popup>
           </Marker>
 
+          {/* --- CAPA GeoJSON --- */}
           {datosCorregidos && (
             <GeoJSON 
               data={datosCorregidos} 
               style={{ color: 'red', weight: 1, fillColor: 'red', fillOpacity: 0.2 }} 
             />
           )}
+
+          {/* --- MARCADORES PLUVIÓMETROS --- */}
+          {pluviometros.map(p => (
+            <Marker key={p.id} position={[p.lat, p.lon]} icon={iconoLluvia}>
+              <Popup>
+                <div style={{ fontFamily: "sans-serif" }}>
+                  <h3 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#2c3e50", borderBottom: "1px solid #ddd", paddingBottom: "4px" }}>
+                    🌧️ {p.nombre}
+                  </h3>
+                  <p style={{ margin: "4px 0", fontSize: "13px" }}>
+                    <strong>Precipitación:</strong>{" "}
+                    <span style={{ color: "#2980b9", fontWeight: "bold", background: "#e8f4fd", padding: "3px 8px", borderRadius: "4px" }}>
+                      {typeof p.precipitacion === 'number' ? p.precipitacion.toFixed(1) : p.precipitacion} mm
+                    </span>
+                  </p>
+                  <p style={{ margin: "10px 0 0 0", fontSize: "10px", color: "#94a3b8", textAlign: "right" }}>
+                    📅 {p.fecha}
+                  </p>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
         </MapContainer>
       </div>
     </div>
   );
 }
 
-// 🏛️ COMPONENTE INTERNO CON ANCHO ADAPTADO AL CONTENEDOR FIJO
 function GraficaPopup({ datos, alOcultar }) {
   return (
     <div style={{ width: '100%', height: '150px', marginTop: '10px', background: '#fdfdfd', padding: '8px 4px 4px 4px', borderRadius: '6px', border: '1px solid #e2e8f0', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: "6px", paddingLeft: "6px" }}>
-        {/* Cambiado el texto de "mediciones" a "horas" para reflejar fielmente la lógica de la query de base de datos */}
         <span style={{ fontSize: "11px", fontWeight: "bold", color: "#64748b", flex: 1 }}>Evolución últimas 24 horas:</span>
         <span 
           onClick={alOcultar} 
@@ -266,7 +298,6 @@ function GraficaPopup({ datos, alOcultar }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="hora" tick={{ fontSize: 9, fill: '#94a3b8' }} stroke="#cbd5e1" tickFormatter={(value) => {
                 if (typeof value === 'string' && value.includes(':')) {
-                  // Si el backend envía "14:35:00", nos quedamos solo con el "14" y le añadimos "h"
                   return `${value.split(':')[0]}h`;
                 }
                 return value;
