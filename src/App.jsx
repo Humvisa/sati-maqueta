@@ -28,7 +28,6 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// ✅ iconoLluvia fuera del componente está bien (no usa React)
 const iconoLluvia = L.divIcon({
    html: '<span style="font-size: 30px; line-height: 1;">🌧️</span>',
   className: '',
@@ -46,8 +45,6 @@ function App() {
   const [historicoReal, setHistoricoReal] = useState([]);
   const [cargandoReal, setCargandoReal] = useState(true);
   const [mostrarGrafica, setMostrarGrafica] = useState(false);
-
-  // ✅ useState de pluviómetros dentro del componente
   const [pluviometros, setPluviometros] = useState([]);
 
   const position = [40.62435, -4.7300];
@@ -109,11 +106,30 @@ function App() {
       });
   }, []);
 
-  // 3. ✅ Datos de pluviómetros dentro del componente
+  // 3. 🎯 Datos de pluviómetros: Duero + Ávila + Muñotello
   useEffect(() => {
     fetch(`http://localhost:8080/api/pluviometros`)
       .then(res => res.json())
-      .then(data => setPluviometros(data))
+      .then(data => {
+        
+        // Listado autorizado: Curso del Duero + Localidades solicitadas de Ávila
+        const localidadesPermitidas = [
+          'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan', 
+          'san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela', 
+          'laguna', 'tordesillas', 'castronuño', 'toro', 'zamora', 
+          'villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle',
+          'avila', 'ávila', 'muñotello', 'munotello'
+        ];
+
+        const pluviometrosFiltrados = data.filter(p => {
+          const nombreAislado = p.nombre ? p.nombre.toLowerCase() : '';
+          
+          // Valida si el nombre del pluviómetro contiene alguna de las palabras clave
+          return localidadesPermitidas.some(localidad => nombreAislado.includes(localidad));
+        });
+
+        setPluviometros(pluviometrosFiltrados);
+      })
       .catch(err => console.error("Error pluviómetros:", err));
   }, []);
 
