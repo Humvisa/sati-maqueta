@@ -188,9 +188,9 @@ function App() {
 <LayersControl.Overlay name="🌧️ Capa de Precipitación (Radar)">
   <TileLayer
     // Cambiado de https:// a http://
-    url={`http://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
+    url={`http://tile.openweathermap.org/map/precipitation_cls/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
     attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
-    opacity={15} 
+    opacity={0.7} 
   />
 </LayersControl.Overlay>
 
