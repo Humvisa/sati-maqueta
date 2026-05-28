@@ -10,6 +10,9 @@ import datosGeoRaw from './adaja.json';
 
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
+// 🔑 AGREGA AQUÍ TU API KEY DE OPENWEATHERMAP
+const OWM_API_KEY = "5f3e72eb7e914fd05a00a02b4fbe2ff2";
+
 const submenuStyles = `
   .leaflet-control-layers-overlays label:has(input + span:contains("↳")) {
     margin-left: 20px;
@@ -106,20 +109,17 @@ function App() {
       });
   }, []);
 
-  // 3. 🎯 Datos de pluviómetros: Duero + Ávila + Muñotello
+  // 3. Datos de pluviómetros
   useEffect(() => {
     fetch(`http://localhost:8080/api/pluviometros`)
       .then(res => res.json())
       .then(data => {
-
-        // Listado autorizado: Curso del Duero + Localidades solicitadas de Ávila
-        const localidadesPermitidas = ['duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan', 'san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela', 'laguna', 'tordesillas', 'castronuño', 'toro', 'zamora', 'villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle', 'avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano', 'Berrocalejo de Aragona', 'Tolbaños', 'Mingorría', 'San Esteban de los Patos', 'Velayos', 'Santo Tomé de Zabarcos', 'Sanchidrián', 'Blascosancho', 'Pajares de Adaja', 'Gutiérrez-Muñoz', 'Adanero', 'Mamblas', 'Arévalo', 'Villatoro', 'Poveda', 'Amavida', 'Pradosegar', 'Narros del Puerto', 'La Torre', 'Muñogalindo', 'Santa María del Arroyo', 'Padiernos', 'Solosancho', 'Sotalbo', 'Niharra', 'El Fresno', 'Gemuño'
+        const localidadesPermitidas = [
+          'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan','san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela','laguna', 'tordesillas', 'castronuño', 'toro', 'zamora','villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle','avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano','Berrocalejo de Aragona', 'Tolbaños','Mingorría', 'San Esteban de los Patos','Velayos', 'Santo Tomé de Zabarcos','Sanchidrián', 'Blascosancho','Pajares de Adaja', 'Gutiérrez-Muñoz','Adanero', 'Mamblas', 'Arévalo','Villatoro', 'Poveda','Amavida','Pradosegar','Narros del Puerto','La Torre','Muñogalindo','Santa María del Arroyo','Padiernos','Solosancho','Sotalbo','Niharra','El Fresno','Gemuño'
         ];
 
         const pluviometrosFiltrados = data.filter(p => {
           const nombreAislado = p.nombre ? p.nombre.toLowerCase() : '';
-
-          // Valida si el nombre del pluviómetro contiene alguna de las palabras clave
           return localidadesPermitidas.some(localidad => nombreAislado.includes(localidad));
         });
 
@@ -135,7 +135,7 @@ function App() {
       <Header />
 
       <div style={{ flex: 1 }}>
-        <MapContainer center={position} zoom={10} minZoom={9} maxZoom={11} style={{ height: "100%", width: "100%" }}>
+        <MapContainer center={position} zoom={10} minZoom={3} maxZoom={19} style={{ height: "100%", width: "100%" }}>
           <LayersControl position="topleft">
 
             <LayersControl.BaseLayer checked name="🗺️ Mapa Callejero">
@@ -183,6 +183,16 @@ function App() {
                 </LayersControl.Overlay>
               </>
             )}
+
+            {/* --- 🌧️ CAPA ADICIONAL DE PRECIPITACIÓN EN TIEMPO REAL --- */}
+<LayersControl.Overlay name="🌧️ Capa de Precipitación (Radar)">
+  <TileLayer
+    // Cambiado de https:// a http://
+    url={`http://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
+    attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
+    opacity={15} 
+  />
+</LayersControl.Overlay>
 
           </LayersControl>
 
