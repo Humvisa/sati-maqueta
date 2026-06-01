@@ -48,7 +48,7 @@ function App() {
   const [cargandoReal, setCargandoReal] = useState(true);
   const [mostrarGrafica, setMostrarGrafica] = useState(false);
   const [pluviometros, setPluviometros] = useState([]);
-  
+
   // 🌦️ ESTADOS PARA GUARDAR LOS DATOS DE OPEN-METEO
   const [climaOpenMeteo, setClimaOpenMeteo] = useState({ temp: null, humedad: null });
   const [cargandoClima, setCargandoClima] = useState(true);
@@ -112,28 +112,64 @@ function App() {
       });
   }, []);
 
-  // 3. Datos de pluviómetros
+  // 3. 🌧️ NUEVO: Datos de pluviómetros integrando La Aldea del Rey Niño y Dehesa en Tiempo Real
   useEffect(() => {
-    fetch(`http://localhost:8080/api/pluviometros`)
-      .then(res => res.json())
-      .then(data => {
+    // Coordenadas aproximadas para los dos puntos solicitados en el entorno de Ávila
+    const urlAldeaReyNino = "https://api.open-meteo.com/v1/forecast?latitude=40.585983&longitude=-4.742731&current=precipitation&timezone=Europe%2FBerlin";
+    const urlDehesa = "https://api.open-meteo.com/v1/forecast?latitude=40.6507&longitude=-4.86121&current=precipitation&timezone=Europe%2FBerlin";
+
+    // Función auxiliar para consultar Open-Meteo en tiempo real
+    const obtenerLluviaTiempoReal = (url, nombre, id) => {
+      return fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          let precipitacionActual = 0;
+          if (data && data.current && typeof data.current.precipitation === 'number') {
+            precipitacionActual = data.current.precipitation;
+          }
+
+          return {
+            id: id,
+            nombre: nombre,
+            lat: data.latitude,
+            lon: data.longitude,
+            precipitacion: precipitacionActual,
+            fecha: "Tiempo Real (Open-Meteo)"
+          };
+        })
+        .catch(err => {
+          console.error(`Error en punto Open-Meteo ${nombre}:`, err);
+          return null;
+        });
+    };
+
+    // Consultamos la API local y los dos puntos de Open-Meteo simultáneamente
+    Promise.all([
+      fetch(`http://localhost:8080/api/pluviometros`).then(res => res.json()).catch(() => []),
+      obtenerLluviaTiempoReal(urlAldeaReyNino, "Open-Meteo: La Aldea del Rey Niño", "om-aldea"),
+      obtenerLluviaTiempoReal(urlDehesa, "Open-Meteo: Dehesa", "om-dehesa")
+    ])
+      .then(([dataBase, puntoAldea, puntoDehesa]) => {
         const localidadesPermitidas = [
-          'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan','san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela','laguna', 'tordesillas', 'castronuño', 'toro', 'zamora','villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle','avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano','berrocalejo de aragona', 'tolbaños','mingorría', 'san esteban de los patos','velayos', 'santo tomé de zabarcos','sanchidrián', 'blascosancho','pajares de adaja', 'gutiérrez-muñoz','adanero', 'mamblas', 'arévalo','villatoro', 'poveda','amavida','pradosegar','narros del puerto','la torre','muñogalindo','santa maría del arroyo','padiernos','solosancho','sotalbo','niharra','el fresno','gemuño'
+          'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan', 'san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela', 'laguna', 'tordesillas', 'castronuño', 'toro', 'zamora', 'villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle', 'avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano', 'berrocalejo de aragona', 'tolbaños', 'mingorría', 'san esteban de los patos', 'velayos', 'santo tomé de zabarcos', 'sanchidrián', 'blascosancho', 'pajares de adaja', 'gutiérrez-muñoz', 'adanero', 'mamblas', 'arévalo', 'villatoro', 'poveda', 'amavida', 'pradosegar', 'narros del puerto', 'la torre', 'muñogalindo', 'santa maría del arroyo', 'padiernos', 'solosancho', 'sotalbo', 'niharra', 'el fresno', 'gemuño'
         ];
 
-        const pluviometrosFiltrados = data.filter(p => {
+        const filtradosLocal = dataBase.filter(p => {
           const nombreAislado = p.nombre ? p.nombre.toLowerCase() : '';
           return localidadesPermitidas.some(localidad => nombreAislado.includes(localidad));
         });
 
-        setPluviometros(pluviometrosFiltrados);
+        const listaFinal = [...filtradosLocal];
+        if (puntoAldea) listaFinal.push(puntoAldea);
+        if (puntoDehesa) listaFinal.push(puntoDehesa);
+
+        setPluviometros(listaFinal);
       })
-      .catch(err => console.error("Error pluviómetros:", err));
+      .catch(err => console.error("Error general cargando pluviómetros:", err));
   }, []);
 
-  // 4. 🛠️ NUEVO: CONSUMO DE LA API DE OPEN-METEO (Datos en tiempo real mediante Fetch numérico)
+  // 4. CONSUMO DE LA API DE OPEN-METEO (Datos del marcador principal)
   useEffect(() => {
-    // Usamos la API de predicción actual de Open-Meteo configurada para las coordenadas de Ávila
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${position[0]}&longitude=${position[1]}&current=temperature_2m,relative_humidity_2m&timezone=Europe%2FBerlin`)
       .then(res => res.json())
       .then(data => {
@@ -211,21 +247,21 @@ function App() {
               <TileLayer
                 url={`http://tile.openweathermap.org/map/precipitation_cls/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
                 attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
-                opacity={0.7} 
+                opacity={0.7}
               />
             </LayersControl.Overlay>
-            {/* --- 💨 CAPA DE VIENTO EN TIEMPO REAL --- */}
-<LayersControl.Overlay name="💨 Dirección y Velocidad del Viento">
-  <TileLayer
-    url={`http://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
-    attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
-    opacity={1} // Un poco más transparente para que no sature la vista
-  />
-</LayersControl.Overlay>
+
+            <LayersControl.Overlay name="💨 Dirección y Velocidad del Viento">
+              <TileLayer
+                url={`http://tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
+                attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
+                opacity={0.6}
+              />
+            </LayersControl.Overlay>
 
           </LayersControl>
 
-          {/* --- MARCADOR RÍO ADAJA (Integrando los datos numéricos de Open-Meteo) --- */}
+          {/* --- MARCADOR RÍO ADAJA --- */}
           <Marker position={position}>
             <Popup
               minWidth={350}
@@ -237,7 +273,6 @@ function App() {
                   ℹ️ Estación Telemetría: Río Adaja
                 </h3>
 
-                {/* 🌟 SECCIÓN OPEN-METEO EN EL POPUP */}
                 <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px", marginBottom: "10px", border: "1px dashed #cbd5e1" }}>
                   <h4 style={{ margin: "0 0 4px 0", fontSize: "11px", color: "#64748b", textTransform: "uppercase" }}>
                     🌤️ Clima actual (Datos de Open-Meteo):
@@ -325,7 +360,7 @@ function App() {
               <Popup>
                 <div style={{ fontFamily: "sans-serif" }}>
                   <h3 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#2c3e50", borderBottom: "1px solid #ddd", paddingBottom: "4px" }}>
-                    🌧️ {p.nombre}
+                    {p.nombre}
                   </h3>
                   <p style={{ margin: "4px 0", fontSize: "13px" }}>
                     <strong>Precipitación:</strong>{" "}
@@ -368,7 +403,7 @@ function GraficaPopup({ datos, alOcultar }) {
                 return `${value.split(':')[0]}h`;
               }
               return value;
-              }} />
+            }} />
             <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} />
             <Tooltip
               contentStyle={{ fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
