@@ -214,6 +214,14 @@ function App() {
                 opacity={0.7} 
               />
             </LayersControl.Overlay>
+            {/* --- 💨 CAPA DE VIENTO EN TIEMPO REAL --- */}
+<LayersControl.Overlay name="💨 Dirección y Velocidad del Viento">
+  <TileLayer
+    url={`http://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
+    attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
+    opacity={1} // Un poco más transparente para que no sature la vista
+  />
+</LayersControl.Overlay>
 
           </LayersControl>
 
