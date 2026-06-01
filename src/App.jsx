@@ -10,7 +10,6 @@ import datosGeoRaw from './adaja.json';
 
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-// 🔑 AGREGA AQUÍ TU API KEY DE OPENWEATHERMAP
 const OWM_API_KEY = "5f3e72eb7e914fd05a00a02b4fbe2ff2";
 
 const submenuStyles = `
@@ -49,8 +48,12 @@ function App() {
   const [cargandoReal, setCargandoReal] = useState(true);
   const [mostrarGrafica, setMostrarGrafica] = useState(false);
   const [pluviometros, setPluviometros] = useState([]);
+  
+  // 🌦️ ESTADOS PARA GUARDAR LOS DATOS DE OPEN-METEO
+  const [climaOpenMeteo, setClimaOpenMeteo] = useState({ temp: null, humedad: null });
+  const [cargandoClima, setCargandoClima] = useState(true);
 
-  const position = [40.62435, -4.7300];
+  const position = [40.62435, -4.7300]; // Coordenadas del área de Ávila
 
   // 1. Transformar coordenadas UTM del JSON local
   useEffect(() => {
@@ -115,7 +118,7 @@ function App() {
       .then(res => res.json())
       .then(data => {
         const localidadesPermitidas = [
-          'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan','san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela','laguna', 'tordesillas', 'castronuño', 'toro', 'zamora','villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle','avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano','Berrocalejo de Aragona', 'Tolbaños','Mingorría', 'San Esteban de los Patos','Velayos', 'Santo Tomé de Zabarcos','Sanchidrián', 'Blascosancho','Pajares de Adaja', 'Gutiérrez-Muñoz','Adanero', 'Mamblas', 'Arévalo','Villatoro', 'Poveda','Amavida','Pradosegar','Narros del Puerto','La Torre','Muñogalindo','Santa María del Arroyo','Padiernos','Solosancho','Sotalbo','Niharra','El Fresno','Gemuño'
+          'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan','san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela','laguna', 'tordesillas', 'castronuño', 'toro', 'zamora','villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle','avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano','berrocalejo de aragona', 'tolbaños','mingorría', 'san esteban de los patos','velayos', 'santo tomé de zabarcos','sanchidrián', 'blascosancho','pajares de adaja', 'gutiérrez-muñoz','adanero', 'mamblas', 'arévalo','villatoro', 'poveda','amavida','pradosegar','narros del puerto','la torre','muñogalindo','santa maría del arroyo','padiernos','solosancho','sotalbo','niharra','el fresno','gemuño'
         ];
 
         const pluviometrosFiltrados = data.filter(p => {
@@ -126,6 +129,26 @@ function App() {
         setPluviometros(pluviometrosFiltrados);
       })
       .catch(err => console.error("Error pluviómetros:", err));
+  }, []);
+
+  // 4. 🛠️ NUEVO: CONSUMO DE LA API DE OPEN-METEO (Datos en tiempo real mediante Fetch numérico)
+  useEffect(() => {
+    // Usamos la API de predicción actual de Open-Meteo configurada para las coordenadas de Ávila
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${position[0]}&longitude=${position[1]}&current=temperature_2m,relative_humidity_2m&timezone=Europe%2FBerlin`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.current) {
+          setClimaOpenMeteo({
+            temp: data.current.temperature_2m,
+            humedad: data.current.relative_humidity_2m
+          });
+        }
+        setCargandoClima(false);
+      })
+      .catch(err => {
+        console.error("Error consultando Open-Meteo:", err);
+        setCargandoClima(false);
+      });
   }, []);
 
   return (
@@ -184,19 +207,17 @@ function App() {
               </>
             )}
 
-            {/* --- 🌧️ CAPA ADICIONAL DE PRECIPITACIÓN EN TIEMPO REAL --- */}
-<LayersControl.Overlay name="🌧️ Capa de Precipitación (Radar)">
-  <TileLayer
-    // Cambiado de https:// a http://
-    url={`http://tile.openweathermap.org/map/precipitation_cls/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
-    attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
-    opacity={0.7} 
-  />
-</LayersControl.Overlay>
+            <LayersControl.Overlay name="🌧️ Capa de Precipitación (Radar OpenWeather)">
+              <TileLayer
+                url={`http://tile.openweathermap.org/map/precipitation_cls/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
+                attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
+                opacity={0.7} 
+              />
+            </LayersControl.Overlay>
 
           </LayersControl>
 
-          {/* --- MARCADOR RÍO ADAJA --- */}
+          {/* --- MARCADOR RÍO ADAJA (Integrando los datos numéricos de Open-Meteo) --- */}
           <Marker position={position}>
             <Popup
               minWidth={350}
@@ -207,6 +228,23 @@ function App() {
                 <h3 style={{ margin: "0 0 8px 0", color: "#2c3e50", borderBottom: "1px solid #ddd", paddingBottom: "4px", fontSize: "16px" }}>
                   ℹ️ Estación Telemetría: Río Adaja
                 </h3>
+
+                {/* 🌟 SECCIÓN OPEN-METEO EN EL POPUP */}
+                <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px", marginBottom: "10px", border: "1px dashed #cbd5e1" }}>
+                  <h4 style={{ margin: "0 0 4px 0", fontSize: "11px", color: "#64748b", textTransform: "uppercase" }}>
+                    🌤️ Clima actual (Datos de Open-Meteo):
+                  </h4>
+                  {cargandoClima ? (
+                    <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>Cargando Open-Meteo...</p>
+                  ) : climaOpenMeteo.temp !== null ? (
+                    <div style={{ display: 'flex', gap: '15px', fontSize: "13px" }}>
+                      <span>🌡️ <strong>Temp:</strong> {climaOpenMeteo.temp} °C</span>
+                      <span>💧 <strong>Humedad:</strong> {climaOpenMeteo.humedad} %</span>
+                    </div>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: "12px", color: "#ef4444" }}>Error al conectar con Open-Meteo</p>
+                  )}
+                </div>
 
                 {cargandoReal ? (
                   <p style={{ margin: 0, fontSize: "12px", color: "#7f8c8d" }}>Consultando datos en Supabase...</p>
@@ -322,7 +360,7 @@ function GraficaPopup({ datos, alOcultar }) {
                 return `${value.split(':')[0]}h`;
               }
               return value;
-            }} />
+              }} />
             <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} />
             <Tooltip
               contentStyle={{ fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
