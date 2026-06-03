@@ -9,8 +9,11 @@ import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import datosGeoRaw from './adaja.json';
 
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-const API_URL = import.meta.env.VITE_API_URL;
-const OWM_API_KEY = import.meta.env.VITE_OWM_API_KEY;
+
+// Variables de entorno adaptadas para Vite con valores de respaldo (fallback)
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+const OWM_API_KEY = import.meta.env.VITE_OWM_API_KEY || "5f3e72eb7e914fd05a00a02b4fbe2ff2";
+
 const submenuStyles = `
   .leaflet-control-layers-overlays label:has(input + span:contains("↳")) {
     margin-left: 20px;
@@ -81,7 +84,7 @@ function App() {
   useEffect(() => {
     const timestampAntiCache = new Date().getTime();
 
-    fetch(`http://localhost:8080/api/rios?v=${timestampAntiCache}`)
+    fetch(`${API_URL}/api/rios?v=${timestampAntiCache}`)
       .then(response => response.json())
       .then(dataActual => {
         if (dataActual && dataActual.length > 0) {
@@ -97,7 +100,7 @@ function App() {
       })
       .catch(error => console.error("Error cargando caudal actual:", error));
 
-    fetch(`http://localhost:8080/api/rios/historico?v=${timestampAntiCache}`)
+    fetch(`${API_URL}/api/rios/historico?v=${timestampAntiCache}`)
       .then(response => response.json())
       .then(dataHistorico => {
         if (dataHistorico && dataHistorico.length > 0) {
@@ -113,10 +116,7 @@ function App() {
 
   // 3. 🌧️ DATOS DE PLUVIÓMETROS (Garantizado con control de errores individual)
   useEffect(() => {
-    // Usamos el modelo estándar de Open-Meteo con tus coordenadas específicas
-    // Punto 1: La Aldea del Rey Niño (40.5859, -4.7448)
     const urlAldeaReyNino = "https://api.open-meteo.com/v1/forecast?latitude=40.5859&longitude=-4.7448&hourly=soil_moisture_9_to_27cm,precipitation&start_date=2026-06-01&end_date=2026-06-01&timezone=Europe%2FBerlin";
-    // Punto 2: Dehesa (Coordenadas aproximadas estables: 40.6430, -4.7110)
     const urlDehesa = "https://api.open-meteo.com/v1/forecast?latitude=40.6507&longitude=-4.86121&hourly=soil_moisture_9_to_27cm,precipitation&start_date=2026-06-01&end_date=2026-06-01&timezone=Europe%2FBerlin";
 
     const obtenerDatosPluvio = (url, nombre, id) => {
@@ -154,17 +154,16 @@ function App() {
         })
         .catch(err => {
           console.error(`Error cargando punto [${nombre}]:`, err);
-          return null; // Si falla un punto, devolvemos null para no romper los demás
+          return null;
         });
     };
 
-    // Consultamos la API local y las solicitudes externas de forma segura
     Promise.all([
-      fetch(`http://localhost:8080/api/pluviometros`)
+      fetch(`${API_URL}/api/pluviometros`)
         .then(res => res.json())
         .catch(err => {
           console.error("Error cargando API local de pluviómetros:", err);
-          return []; // Si el backend está apagado, devolvemos un array vacío para que sigan viéndose los de Open-Meteo
+          return [];
         }),
       obtenerDatosPluvio(urlAldeaReyNino, "Open-Meteo: La Aldea del Rey Niño", "om-aldea"),
       obtenerDatosPluvio(urlDehesa, "Open-Meteo: Dehesa", "om-dehesa")
@@ -174,7 +173,6 @@ function App() {
         'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan','san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela','laguna', 'tordesillas', 'castronuño', 'toro', 'zamora','villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle','avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano','berrocalejo de aragona', 'tolbaños','mingorría', 'san esteban de los patos','velayos', 'santo tomé de zabarcos','sanchidrián', 'blascosancho','pajares de adaja', 'gutiérrez-muñoz','adanero', 'mamblas', 'arévalo','villatoro', 'poveda','amavida','pradosegar','narros del puerto','la torre','muñogalindo','santa maría del arroyo','padiernos','solosancho','sotalbo','niharra','el fresno','gemuño'
       ];
 
-      // Filtramos la base de datos si contiene registros válidos
       const filtradosLocal = Array.isArray(dataBase) 
         ? dataBase.filter(p => {
             const nombreAislado = p.nombre ? p.nombre.toLowerCase() : '';
@@ -228,13 +226,24 @@ function App() {
               <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />
             </LayersControl.BaseLayer>
 
-            <LayersControl.Overlay name={mostrarSubmenu ? "📂 RIESGOS DE INUNDACIÓN" : "📁 RIESGOS DE INUNDACIÓN"}>
-              <FolderTrigger onToggle={setMostrarSubmenu} />
+            {/* Manejo nativo y seguro de eventos add/remove para desplegar el submenú sin bucles infinitos */}
+            <LayersControl.Overlay name="📁 RIESGOS DE INUNDACIÓN">
+              <WMSTileLayer
+                url="https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones"
+                layers="NZ.Flood.FluvialT100"
+                format="image/png"
+                transparent={true}
+                opacity={0}
+                eventHandlers={{
+                  add: () => setMostrarSubmenu(true),
+                  remove: () => setMostrarSubmenu(false)
+                }}
+              />
             </LayersControl.Overlay>
 
             {mostrarSubmenu && (
               <>
-                <LayersControl.Overlay name="&nbsp;&nbsp;&nbsp;🌊  ZONA INUNDABLE T=10 AÑOS (Alta)">
+                <LayersControl.Overlay name="&nbsp;&nbsp;&nbsp;🌊 &nbsp;ZONA INUNDABLE T=10 AÑOS (Alta)">
                   <WMSTileLayer
                     url="https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones"
                     layers="NZ.Flood.FluvialT10"
@@ -244,7 +253,7 @@ function App() {
                   />
                 </LayersControl.Overlay>
 
-                <LayersControl.Overlay checked name="&nbsp;&nbsp;&nbsp;🌊  ZONA INUNDABLE T=100 AÑOS (Media)">
+                <LayersControl.Overlay checked name="&nbsp;&nbsp;&nbsp;🌊 &nbsp;ZONA INUNDABLE T=100 AÑOS (Media)">
                   <WMSTileLayer
                     url="https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones"
                     layers="NZ.Flood.FluvialT100"
@@ -254,7 +263,7 @@ function App() {
                   />
                 </LayersControl.Overlay>
 
-                <LayersControl.Overlay name="&nbsp;&nbsp;&nbsp;🌊  ZONA INUNDABLE T=500 AÑOS (Baja)">
+                <LayersControl.Overlay name="&nbsp;&nbsp;&nbsp;🌊 &nbsp;ZONA INUNDABLE T=500 AÑOS (Baja)">
                   <WMSTileLayer
                     url="https://servicios.idee.es/wms-inspire/riesgos-naturales/inundaciones"
                     layers="NZ.Flood.FluvialT500"
@@ -271,7 +280,7 @@ function App() {
                 url={`http://tile.openweathermap.org/map/precipitation_cls/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
                 attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
                 opacity={0.7} 
-              />
+                />
             </LayersControl.Overlay>
 
             <LayersControl.Overlay name="💨 Dirección y Velocidad del Viento">
@@ -449,14 +458,6 @@ function GraficaPopup({ datos, alOcultar }) {
       </div>
     </div>
   );
-}
-
-function FolderTrigger({ onToggle }) {
-  useEffect(() => {
-    onToggle(true);
-    return () => onToggle(false);
-  }, [onToggle]);
-  return null;
 }
 
 export default App;
