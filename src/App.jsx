@@ -9,9 +9,8 @@ import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import datosGeoRaw from './adaja.json';
 
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-
-const OWM_API_KEY = "5f3e72eb7e914fd05a00a02b4fbe2ff2";
-
+const API_URL = import.meta.env.VITE_API_URL;
+const OWM_API_KEY = import.meta.env.VITE_OWM_API_KEY;
 const submenuStyles = `
   .leaflet-control-layers-overlays label:has(input + span:contains("↳")) {
     margin-left: 20px;
@@ -48,7 +47,7 @@ function App() {
   const [cargandoReal, setCargandoReal] = useState(true);
   const [mostrarGrafica, setMostrarGrafica] = useState(false);
   const [pluviometros, setPluviometros] = useState([]);
-
+  
   // 🌦️ ESTADOS PARA GUARDAR LOS DATOS DE OPEN-METEO
   const [climaOpenMeteo, setClimaOpenMeteo] = useState({ temp: null, humedad: null });
   const [cargandoClima, setCargandoClima] = useState(true);
@@ -112,60 +111,84 @@ function App() {
       });
   }, []);
 
-  // 3. 🌧️ NUEVO: Datos de pluviómetros integrando La Aldea del Rey Niño y Dehesa en Tiempo Real
+  // 3. 🌧️ DATOS DE PLUVIÓMETROS (Garantizado con control de errores individual)
   useEffect(() => {
-    // Coordenadas aproximadas para los dos puntos solicitados en el entorno de Ávila
-    const urlAldeaReyNino = "https://api.open-meteo.com/v1/forecast?latitude=40.585983&longitude=-4.742731&current=precipitation&timezone=Europe%2FBerlin";
-    const urlDehesa = "https://api.open-meteo.com/v1/forecast?latitude=40.6507&longitude=-4.86121&current=precipitation&timezone=Europe%2FBerlin";
+    // Usamos el modelo estándar de Open-Meteo con tus coordenadas específicas
+    // Punto 1: La Aldea del Rey Niño (40.5859, -4.7448)
+    const urlAldeaReyNino = "https://api.open-meteo.com/v1/forecast?latitude=40.5859&longitude=-4.7448&hourly=soil_moisture_9_to_27cm,precipitation&start_date=2026-06-01&end_date=2026-06-01&timezone=Europe%2FBerlin";
+    // Punto 2: Dehesa (Coordenadas aproximadas estables: 40.6430, -4.7110)
+    const urlDehesa = "https://api.open-meteo.com/v1/forecast?latitude=40.6507&longitude=-4.86121&hourly=soil_moisture_9_to_27cm,precipitation&start_date=2026-06-01&end_date=2026-06-01&timezone=Europe%2FBerlin";
 
-    // Función auxiliar para consultar Open-Meteo en tiempo real
-    const obtenerLluviaTiempoReal = (url, nombre, id) => {
+    const obtenerDatosPluvio = (url, nombre, id) => {
       return fetch(url)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error("Respuesta de red incorrecta");
+          return res.json();
+        })
         .then(data => {
-          let precipitacionActual = 0;
-          if (data && data.current && typeof data.current.precipitation === 'number') {
-            precipitacionActual = data.current.precipitation;
-          }
+          let totalPrecipitacion = 0;
+          let humedadSueloMedia = null;
 
+          if (data && data.hourly) {
+            if (data.hourly.precipitation) {
+              totalPrecipitacion = data.hourly.precipitation.reduce((acc, val) => acc + (val || 0), 0);
+            }
+            if (data.hourly.soil_moisture_9_to_27cm) {
+              const valoresValidos = data.hourly.soil_moisture_9_to_27cm.filter(v => v !== null);
+              if (valoresValidos.length > 0) {
+                const sumaHumedad = valoresValidos.reduce((acc, val) => acc + val, 0);
+                humedadSueloMedia = sumaHumedad / valoresValidos.length;
+              }
+            }
+          }
+          
           return {
             id: id,
             nombre: nombre,
-            lat: data.latitude,
-            lon: data.longitude,
-            precipitacion: precipitacionActual,
-            fecha: "Tiempo Real (Open-Meteo)"
+            lat: data.latitude || position[0],
+            lon: data.longitude || position[1],
+            precipitacion: totalPrecipitacion,
+            humedadSuelo: humedadSueloMedia,
+            fecha: "01/06/2026 (Open-Meteo)"
           };
         })
         .catch(err => {
-          console.error(`Error en punto Open-Meteo ${nombre}:`, err);
-          return null;
+          console.error(`Error cargando punto [${nombre}]:`, err);
+          return null; // Si falla un punto, devolvemos null para no romper los demás
         });
     };
 
-    // Consultamos la API local y los dos puntos de Open-Meteo simultáneamente
+    // Consultamos la API local y las solicitudes externas de forma segura
     Promise.all([
-      fetch(`http://localhost:8080/api/pluviometros`).then(res => res.json()).catch(() => []),
-      obtenerLluviaTiempoReal(urlAldeaReyNino, "Open-Meteo: La Aldea del Rey Niño", "om-aldea"),
-      obtenerLluviaTiempoReal(urlDehesa, "Open-Meteo: Dehesa", "om-dehesa")
+      fetch(`http://localhost:8080/api/pluviometros`)
+        .then(res => res.json())
+        .catch(err => {
+          console.error("Error cargando API local de pluviómetros:", err);
+          return []; // Si el backend está apagado, devolvemos un array vacío para que sigan viéndose los de Open-Meteo
+        }),
+      obtenerDatosPluvio(urlAldeaReyNino, "Open-Meteo: La Aldea del Rey Niño", "om-aldea"),
+      obtenerDatosPluvio(urlDehesa, "Open-Meteo: Dehesa", "om-dehesa")
     ])
-      .then(([dataBase, puntoAldea, puntoDehesa]) => {
-        const localidadesPermitidas = [
-          'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan', 'san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela', 'laguna', 'tordesillas', 'castronuño', 'toro', 'zamora', 'villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle', 'avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano', 'berrocalejo de aragona', 'tolbaños', 'mingorría', 'san esteban de los patos', 'velayos', 'santo tomé de zabarcos', 'sanchidrián', 'blascosancho', 'pajares de adaja', 'gutiérrez-muñoz', 'adanero', 'mamblas', 'arévalo', 'villatoro', 'poveda', 'amavida', 'pradosegar', 'narros del puerto', 'la torre', 'muñogalindo', 'santa maría del arroyo', 'padiernos', 'solosancho', 'sotalbo', 'niharra', 'el fresno', 'gemuño'
-        ];
+    .then(([dataBase, puntoAldea, puntoDehesa]) => {
+      const localidadesPermitidas = [
+        'duero', 'duruelo', 'covaleda', 'salduero', 'soria', 'almazán', 'almazan','san esteban', 'gormaz', 'aranda', 'roa', 'peñafiel', 'tudela','laguna', 'tordesillas', 'castronuño', 'toro', 'zamora','villalcampo', 'castro', 'aldeadávila', 'aldeadavila', 'saucelle','avila', 'ávila', 'muñotello', 'munotello', 'candeleda', 'hervás', 'hervas', 'madrigal', 'madrigal de la vera', 'vicolozano','berrocalejo de aragona', 'tolbaños','mingorría', 'san esteban de los patos','velayos', 'santo tomé de zabarcos','sanchidrián', 'blascosancho','pajares de adaja', 'gutiérrez-muñoz','adanero', 'mamblas', 'arévalo','villatoro', 'poveda','amavida','pradosegar','narros del puerto','la torre','muñogalindo','santa maría del arroyo','padiernos','solosancho','sotalbo','niharra','el fresno','gemuño'
+      ];
 
-        const filtradosLocal = dataBase.filter(p => {
-          const nombreAislado = p.nombre ? p.nombre.toLowerCase() : '';
-          return localidadesPermitidas.some(localidad => nombreAislado.includes(localidad));
-        });
+      // Filtramos la base de datos si contiene registros válidos
+      const filtradosLocal = Array.isArray(dataBase) 
+        ? dataBase.filter(p => {
+            const nombreAislado = p.nombre ? p.nombre.toLowerCase() : '';
+            return localidadesPermitidas.some(localidad => nombreAislado.includes(localidad));
+          })
+        : [];
 
-        const listaFinal = [...filtradosLocal];
-        if (puntoAldea) listaFinal.push(puntoAldea);
-        if (puntoDehesa) listaFinal.push(puntoDehesa);
+      const listaFinal = [...filtradosLocal];
+      if (puntoAldea) listaFinal.push(puntoAldea);
+      if (puntoDehesa) listaFinal.push(puntoDehesa);
 
-        setPluviometros(listaFinal);
-      })
-      .catch(err => console.error("Error general cargando pluviómetros:", err));
+      setPluviometros(listaFinal);
+    })
+    .catch(err => console.error("Error crítico consolidando el estado final:", err));
   }, []);
 
   // 4. CONSUMO DE LA API DE OPEN-METEO (Datos del marcador principal)
@@ -247,7 +270,7 @@ function App() {
               <TileLayer
                 url={`http://tile.openweathermap.org/map/precipitation_cls/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
                 attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
-                opacity={0.7}
+                opacity={0.7} 
               />
             </LayersControl.Overlay>
 
@@ -255,7 +278,7 @@ function App() {
               <TileLayer
                 url={`http://tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`}
                 attribution='&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>'
-                opacity={0.6}
+                opacity={0.6} 
               />
             </LayersControl.Overlay>
 
@@ -363,11 +386,21 @@ function App() {
                     {p.nombre}
                   </h3>
                   <p style={{ margin: "4px 0", fontSize: "13px" }}>
-                    <strong>Precipitación:</strong>{" "}
+                    <strong>Precipitación diaria:</strong>{" "}
                     <span style={{ color: "#2980b9", fontWeight: "bold", background: "#e8f4fd", padding: "3px 8px", borderRadius: "4px" }}>
                       {typeof p.precipitacion === 'number' ? p.precipitacion.toFixed(1) : p.precipitacion} mm
                     </span>
                   </p>
+                  
+                  {typeof p.humedadSuelo === 'number' && (
+                    <p style={{ margin: "6px 0", fontSize: "13px" }}>
+                      <strong>Humedad Suelo (9-27cm):</strong>{" "}
+                      <span style={{ color: "#16a34a", fontWeight: "bold", background: "#f0fdf4", padding: "3px 8px", borderRadius: "4px" }}>
+                        {p.humedadSuelo.toFixed(3)} m³/m³
+                      </span>
+                    </p>
+                  )}
+
                   <p style={{ margin: "10px 0 0 0", fontSize: "10px", color: "#94a3b8", textAlign: "right" }}>
                     📅 {p.fecha}
                   </p>
@@ -403,7 +436,7 @@ function GraficaPopup({ datos, alOcultar }) {
                 return `${value.split(':')[0]}h`;
               }
               return value;
-            }} />
+              }} />
             <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} />
             <Tooltip
               contentStyle={{ fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
